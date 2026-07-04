@@ -5,6 +5,10 @@
 
 #import <Carbon/Carbon.h>  // for kVK_Tab, kVK_Escape
 
+// How long ⌘ must stay held before the picker appears. A quick ⌘Tab tap
+// commits before this fires, so it switches instantly with no UI flash.
+static const NSTimeInterval kShowDelay = 0.2;
+
 @interface SwitcherController () {
     CFMachPortRef _tap;
     CFRunLoopSourceRef _runLoopSource;
@@ -14,6 +18,8 @@
 @property(nonatomic, strong) NSArray<WindowInfo *> *windows;
 @property(nonatomic, strong) SwitcherPanel *panel;
 @property(nonatomic, assign) pid_t selfPID;
+@property(nonatomic, strong) NSTimer *showTimer;
+@property(nonatomic, assign) BOOL panelVisible;
 - (CGEventRef)handleEventOfType:(CGEventType)type event:(CGEventRef)event;
 @end
 
@@ -111,17 +117,33 @@ static CGEventRef EventTapCallback(CGEventTapProxy proxy, CGEventType type,
         return NO;
     }
     self.switching = YES;
+    self.panelVisible = NO;
     NSInteger last = (NSInteger)self.windows.count - 1;
     self.selectedIndex = backward ? last : 1;
-    [self.panel showWindows:self.windows selectedIndex:self.selectedIndex];
+    // Defer showing the picker: a quick tap commits before this fires and just
+    // switches to the selected window with no UI. Hold ⌘ past kShowDelay to see
+    // the picker.
+    self.showTimer = [NSTimer scheduledTimerWithTimeInterval:kShowDelay
+                                                     target:self
+                                                   selector:@selector(showTimerFired:)
+                                                   userInfo:nil
+                                                    repeats:NO];
     return YES;
+}
+
+- (void)showTimerFired:(NSTimer *)timer {
+    if (!self.switching) return;
+    [self.panel showWindows:self.windows selectedIndex:self.selectedIndex];
+    self.panelVisible = YES;
 }
 
 - (void)advanceBackward:(BOOL)backward {
     NSInteger n = (NSInteger)self.windows.count;
     if (n == 0) return;
     self.selectedIndex = ((self.selectedIndex + (backward ? -1 : 1)) % n + n) % n;
-    [self.panel updateSelectedIndex:self.selectedIndex];
+    // If the picker is already up, reflect the new selection; otherwise it will
+    // show the current selection once the timer fires.
+    if (self.panelVisible) [self.panel updateSelectedIndex:self.selectedIndex];
 }
 
 - (void)commit {
@@ -139,7 +161,12 @@ static CGEventRef EventTapCallback(CGEventTapProxy proxy, CGEventType type,
 
 - (void)endSwitching {
     self.switching = NO;
-    [self.panel dismiss];
+    [self.showTimer invalidate];
+    self.showTimer = nil;
+    if (self.panelVisible) {
+        [self.panel dismiss];
+        self.panelVisible = NO;
+    }
     self.windows = nil;
     self.selectedIndex = 0;
 }

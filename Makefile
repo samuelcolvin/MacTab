@@ -11,6 +11,11 @@ SOURCES := $(wildcard src/*.m)
 # Where `make install` puts the app. Override with `make install PREFIX=~/Applications`.
 PREFIX := /Applications
 
+BUNDLE_ID    := dev.pydantic.mactab
+LAUNCH_AGENT := $(HOME)/Library/LaunchAgents/$(BUNDLE_ID).plist
+INSTALLED_BIN := $(PREFIX)/$(BUNDLE)/Contents/MacOS/$(APP_NAME)
+GUI_DOMAIN   := gui/$(shell id -u)
+
 FRAMEWORKS := -framework Cocoa \
               -framework ApplicationServices \
               -framework Carbon \
@@ -19,7 +24,7 @@ FRAMEWORKS := -framework Cocoa \
 CFLAGS := -fobjc-arc -fmodules -Wall -Wno-deprecated-declarations \
           -mmacosx-version-min=12.0 -isysroot $(SDK) -Isrc
 
-.PHONY: all clean run sign install uninstall logs stream-logs
+.PHONY: all clean run sign install uninstall logs stream-logs startup-install startup-uninstall
 
 all: $(BUNDLE)
 
@@ -53,10 +58,25 @@ install: all
 	cp -R $(BUILD)/$(BUNDLE) $(PREFIX)/$(BUNDLE)
 	@echo "Installed $(PREFIX)/$(BUNDLE) — launch it from $(PREFIX) or with: open $(PREFIX)/$(BUNDLE)"
 
-uninstall:
+uninstall: startup-uninstall
 	@killall $(APP_NAME) 2>/dev/null || true
 	rm -rf $(PREFIX)/$(BUNDLE)
 	@echo "Removed $(PREFIX)/$(BUNDLE)"
+
+# Install to $(PREFIX), then register a per-user LaunchAgent so MacTab starts
+# at login. Uses the installed (stable) path so the Accessibility grant sticks.
+startup-install: install
+	@mkdir -p $(HOME)/Library/LaunchAgents
+	sed 's|__BIN__|$(INSTALLED_BIN)|' $(BUNDLE_ID).plist.in > $(LAUNCH_AGENT)
+	@# Reload if already registered, then start it now as well as at login.
+	@launchctl bootout $(GUI_DOMAIN)/$(BUNDLE_ID) 2>/dev/null || true
+	launchctl bootstrap $(GUI_DOMAIN) $(LAUNCH_AGENT)
+	@echo "MacTab will now launch at login. Running it now too."
+
+startup-uninstall:
+	@launchctl bootout $(GUI_DOMAIN)/$(BUNDLE_ID) 2>/dev/null || true
+	@rm -f $(LAUNCH_AGENT)
+	@echo "MacTab removed from login items."
 
 clean:
 	rm -rf $(BUILD)

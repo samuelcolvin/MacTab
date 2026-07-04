@@ -18,32 +18,41 @@ permission is required.
 ## Build & run
 
 ```sh
-make          # builds build/MacTab.app
-make run      # builds and launches it
+make          # build build/MacTab.app
+make run      # build and launch (open)
+make logs     # build and run in the foreground with NSLog output in the terminal
 ```
 
 On first launch macOS will ask for **Accessibility** permission
 (System Settings › Privacy & Security › Accessibility). Grant it, then relaunch.
-The app is an agent (no Dock icon); quit it from Activity Monitor, or add a menu
-bar item (see below).
+The app is an agent (no Dock icon); quit it from its **menu-bar icon**
+(rectangle icon → Quit MacTab, ⌘Q).
 
-## How it works
+## make targets
 
-| Piece | File | API |
-|---|---|---|
-| Global ⌘Tab capture + state machine | `SwitcherController.m` | `CGEventTapCreate` (session tap, active) |
-| Window enumeration (current Space) | `WindowInfo.m` | `CGWindowListCopyWindowInfo(kCGWindowListOptionOnScreenOnly)` |
-| Focusing a window | `WindowRaiser.m` | AX `AXRaise` + `_AXUIElementGetWindow` (one private call) |
-| Overlay UI | `SwitcherPanel.m` | non-activating `NSPanel`, custom-drawn |
+| Target                   | What it does                                                                        |
+|--------------------------|-------------------------------------------------------------------------------------|
+| `make` / `make all`      | Build `build/MacTab.app` (ad-hoc signed).                                           |
+| `make run`               | Build and launch via `open`.                                                        |
+| `make logs`              | Build and run in the foreground so `NSLog` prints to the terminal (Ctrl-C to quit). |
+| `make stream-logs`       | Stream the installed app's logs from the unified log.                               |
+| `make install`           | Copy the app to `/Applications` (override with `PREFIX=~/Applications`).            |
+| `make uninstall`         | Remove the app and its login item.                                                  |
+| `make startup-install`   | Install, then register a LaunchAgent so MacTab starts at login.                     |
+| `make startup-uninstall` | Remove the login item only.                                                         |
+| `make clean`             | Delete `build/`.                                                                    |
 
-## Natural next steps
+### Launch at login
 
-- **Window thumbnails** — capture with ScreenCaptureKit (adds a Screen
-  Recording permission). Replace the text rows in `SwitcherPanel.m`.
-- **Menu bar item / quit / preferences** — add an `NSStatusItem` in `AppDelegate.m`.
-- **Configurable hotkey** — currently hard-coded to ⌘Tab / `kVK_Tab` in
-  `SwitcherController.m`.
-- **True MRU** — install AX focus observers to track real focus history instead
-  of relying on z-order.
-- **Other-Space windows** — the harder feature you skipped; needs private
-  SkyLight (`SLSCopyWindowsWithOptionsAndTags`) to enumerate off-Space windows.
+```sh
+make startup-install     # installs to /Applications and starts at every login
+make startup-uninstall   # stop launching at login
+```
+
+This writes a per-user LaunchAgent to
+`~/Library/LaunchAgents/dev.pydantic.mactab.plist` pointing at the installed
+binary. Because it always runs from the stable `/Applications` path, the
+Accessibility grant persists across rebuilds. It launches at login but is not
+kept alive — quitting from the menu bar keeps it quit until the next login.
+
+Alternatively, add `MacTab.app` under System Settings › General › Login Items.
