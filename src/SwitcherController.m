@@ -91,8 +91,10 @@ static CGEventRef EventTapCallback(CGEventTapProxy proxy, CGEventType type,
             break;
 
         case kCGEventKeyUp:
-            // Swallow the Tab key-up while switching so it doesn't leak.
-            if (self.switching && keycode == kVK_Tab) return NULL;
+            // Swallow the Tab/Escape key-up while switching so the key-up we
+            // consumed the key-down for doesn't leak to the frontmost app.
+            if (self.switching && (keycode == kVK_Tab || keycode == kVK_Escape))
+                return NULL;
             break;
 
         case kCGEventFlagsChanged:
@@ -151,7 +153,15 @@ static CGEventRef EventTapCallback(CGEventTapProxy proxy, CGEventType type,
         chosen = self.windows[self.selectedIndex];
     }
     [self endSwitching];
-    if (chosen) [WindowRaiser raise:chosen];
+    // Raising a window makes synchronous AX calls into the target app. Defer it
+    // off the event-tap callback: this callback runs on the main run loop for an
+    // active, session-wide tap, so a beachballed target must not block it — that
+    // would stall keyboard input in every app until the system disables the tap.
+    if (chosen) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [WindowRaiser raise:chosen];
+        });
+    }
 }
 
 - (void)cancel {

@@ -9,6 +9,10 @@
     AXUIElementRef app = AXUIElementCreateApplication(window.ownerPID);
     if (!app) return;
 
+    // Cap how long each AX call waits on the target app. The default is several
+    // seconds; a beachballed app should fail fast rather than hang the raise.
+    AXUIElementSetMessagingTimeout(app, 0.25);
+
     CFArrayRef axWindows = NULL;
     AXError err = AXUIElementCopyAttributeValue(
         app, kAXWindowsAttribute, (CFTypeRef *)&axWindows);
