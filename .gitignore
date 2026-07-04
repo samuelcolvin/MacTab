@@ -1,0 +1,16 @@
+# Build output
+build/
+*.app
+
+# macOS
+.DS_Store
+
+# Xcode (in case you later add a project)
+xcuserdata/
+*.xcuserstate
+DerivedData/
+
+# Editor
+.vscode/
+.idea/
+*.swp
