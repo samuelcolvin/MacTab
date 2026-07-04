@@ -4,24 +4,39 @@
 @interface AppDelegate ()
 @property(nonatomic, strong) SwitcherController *switcher;
 @property(nonatomic, strong) NSStatusItem *statusItem;
+@property(nonatomic, assign) BOOL didPromptAccessibility;
+@property(nonatomic, assign) BOOL didStart;
 @end
 
 @implementation AppDelegate
 
 - (void)applicationDidFinishLaunching:(NSNotification *)note {
     [self setupStatusItem];
-
-    // Prompt for Accessibility permission if we don't already have it. Both the
-    // event tap and window-raising require it.
-    NSDictionary *opts = @{ (__bridge NSString *)kAXTrustedCheckOptionPrompt: @YES };
-    BOOL trusted = AXIsProcessTrustedWithOptions((__bridge CFDictionaryRef)opts);
-
     self.switcher = [SwitcherController new];
-    if (![self.switcher start]) {
-        if (!trusted) {
-            [self showPermissionAlert];
-        }
+    [self startWhenTrusted];
+}
+
+// We create the keyboard event tap only once the process is already trusted for
+// Accessibility. An *active* tap made by an Accessibility-trusted process is
+// authorized by Accessibility alone, so macOS does NOT additionally prompt for
+// Input Monitoring — you get a single permission dialog instead of two.
+- (void)startWhenTrusted {
+    if (self.didStart) return;
+
+    if (AXIsProcessTrusted()) {
+        self.didStart = YES;
+        [self.switcher start];
+        return;
     }
+
+    // Show the one Accessibility prompt (once), then poll until it's granted.
+    // The app lives in the menu bar meanwhile; no relaunch is needed.
+    if (!self.didPromptAccessibility) {
+        self.didPromptAccessibility = YES;
+        NSDictionary *opts = @{ (__bridge NSString *)kAXTrustedCheckOptionPrompt: @YES };
+        AXIsProcessTrustedWithOptions((__bridge CFDictionaryRef)opts);
+    }
+    [self performSelector:@selector(startWhenTrusted) withObject:nil afterDelay:1.0];
 }
 
 - (void)setupStatusItem {
@@ -54,23 +69,6 @@
 - (void)openGitHub:(id)sender {
     [[NSWorkspace sharedWorkspace]
         openURL:[NSURL URLWithString:@"https://github.com/samuelcolvin/MacTab"]];
-}
-
-- (void)showPermissionAlert {
-    NSAlert *alert = [[NSAlert alloc] init];
-    alert.messageText = @"Accessibility permission needed";
-    alert.informativeText =
-        @"Grant this app Accessibility access in System Settings › Privacy & "
-        @"Security › Accessibility, then relaunch it.";
-    [alert addButtonWithTitle:@"Open System Settings"];
-    [alert addButtonWithTitle:@"Quit"];
-    NSModalResponse r = [alert runModal];
-    if (r == NSAlertFirstButtonReturn) {
-        NSURL *url = [NSURL URLWithString:
-            @"x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility"];
-        [[NSWorkspace sharedWorkspace] openURL:url];
-    }
-    [NSApp terminate:nil];
 }
 
 @end
