@@ -112,14 +112,13 @@ static CGEventRef EventTapCallback(CGEventTapProxy proxy, CGEventType type,
 
 - (BOOL)beginSwitchingBackward:(BOOL)backward {
     self.windows = [WindowInfo currentSpaceWindowsExcludingPID:self.selfPID];
-    if (self.windows.count < 2) {
-        self.windows = nil;
-        return NO;
-    }
+    // We always take over ⌘Tab so the native switcher never appears — even with
+    // zero windows, where the picker just shows a "No windows" message.
     self.switching = YES;
     self.panelVisible = NO;
     NSInteger last = (NSInteger)self.windows.count - 1;
     self.selectedIndex = backward ? last : 1;
+    if (self.selectedIndex > last) self.selectedIndex = last;  // clamp (single window)
     // Defer showing the picker: a quick tap commits before this fires and just
     // switches to the selected window with no UI. Hold ⌘ past kShowDelay to see
     // the picker.

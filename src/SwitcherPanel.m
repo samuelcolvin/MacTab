@@ -34,6 +34,20 @@ static const CGFloat kCornerRadius = 16.0;
         NSForegroundColorAttributeName: [NSColor whiteColor],
     };
 
+    // Empty state: no windows on this Space.
+    if (self.windows.count == 0) {
+        NSString *msg = @"No windows";
+        NSDictionary *emptyAttrs = @{
+            NSFontAttributeName: [NSFont systemFontOfSize:14 weight:NSFontWeightMedium],
+            NSForegroundColorAttributeName: [NSColor colorWithWhite:0.6 alpha:1.0],
+        };
+        NSSize sz = [msg sizeWithAttributes:emptyAttrs];
+        NSPoint p = NSMakePoint((self.bounds.size.width - sz.width) / 2.0,
+                                (self.bounds.size.height - sz.height) / 2.0);
+        [msg drawAtPoint:p withAttributes:emptyAttrs];
+        return;
+    }
+
     for (NSInteger i = 0; i < (NSInteger)self.windows.count; i++) {
         WindowInfo *w = self.windows[i];
         CGFloat y = kPadding + i * kRowHeight;
@@ -114,7 +128,9 @@ static const CGFloat kCornerRadius = 16.0;
     self.contentViewCustom.windows = windows;
     self.contentViewCustom.selectedIndex = index;
 
-    CGFloat height = 2 * kPadding + windows.count * kRowHeight;
+    // Empty list still reserves one row's worth of height for the message.
+    NSUInteger rows = MAX(windows.count, (NSUInteger)1);
+    CGFloat height = 2 * kPadding + rows * kRowHeight;
     NSRect frame = NSMakeRect(0, 0, kPanelWidth, height);
 
     NSScreen *screen = [NSScreen mainScreen];

@@ -40,10 +40,20 @@
     hint.enabled = NO;
     [menu addItem:hint];
     [menu addItem:[NSMenuItem separatorItem]];
+    NSMenuItem *github = [[NSMenuItem alloc]
+        initWithTitle:@"View at github.com/samuelcolvin/MacTab" action:@selector(openGitHub:) keyEquivalent:@""];
+    github.target = self;
+    [menu addItem:github];
+    [menu addItem:[NSMenuItem separatorItem]];
     [menu addItemWithTitle:@"Quit MacTab"
                     action:@selector(terminate:)
              keyEquivalent:@"q"];
     self.statusItem.menu = menu;
+}
+
+- (void)openGitHub:(id)sender {
+    [[NSWorkspace sharedWorkspace]
+        openURL:[NSURL URLWithString:@"https://github.com/samuelcolvin/MacTab"]];
 }
 
 - (void)showPermissionAlert {
