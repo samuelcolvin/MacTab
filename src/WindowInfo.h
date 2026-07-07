@@ -10,8 +10,9 @@
 @property(nonatomic, strong) NSImage *icon;        // app icon, may be nil
 @property(nonatomic, assign) CGRect bounds;
 
-// Enumerate windows on the CURRENT Space, front-to-back (z-order == a good
-// most-recently-used proxy), excluding our own process and non-window chrome.
+// Enumerate windows on the CURRENT Space and CURRENT display (the display
+// under the mouse cursor), front-to-back (z-order == a good most-recently-used
+// proxy), excluding our own process and non-window chrome.
 + (NSArray<WindowInfo *> *)currentSpaceWindowsExcludingPID:(pid_t)selfPID;
 
 // Display string used in the overlay.

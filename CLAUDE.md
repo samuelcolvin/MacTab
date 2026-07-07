@@ -64,7 +64,11 @@ Startup flow: `main.m` (accessory `NSApplication`) → `AppDelegate` → `Switch
 - **`WindowInfo.m`** — enumerates current-Space windows via
   `CGWindowListCopyWindowInfo(kCGWindowListOptionOnScreenOnly ...)`. "On-screen only"
   *is* the current-Space filter (public API, no private calls). Filters to layer 0,
-  drops transparent/tiny windows and our own PID. Returns front-to-back z-order.
+  drops transparent/tiny windows and our own PID. Returns front-to-back z-order,
+  then keeps only windows on the **current display** — the display under the
+  mouse cursor (cursor read via `CGEventCreate`, no extra permissions); each
+  window is mapped to its display via `CGGetDisplaysWithPoint` on its centre.
+  The panel is likewise placed on the cursor's display in `SwitcherPanel.m`.
 
 - **`WindowRaiser.m`** — focuses a chosen window: activates the owning app, then
   `AXRaise`es the specific AX window. Matches the enumerated `CGWindowID` to an AX

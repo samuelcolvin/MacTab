@@ -133,7 +133,14 @@ static const CGFloat kCornerRadius = 16.0;
     CGFloat height = 2 * kPadding + rows * kRowHeight;
     NSRect frame = NSMakeRect(0, 0, kPanelWidth, height);
 
+    // Show on the display under the cursor — the same display WindowInfo
+    // filtered the window list to. mainScreen would follow keyboard focus,
+    // which can be on another display.
     NSScreen *screen = [NSScreen mainScreen];
+    NSPoint mouse = [NSEvent mouseLocation];
+    for (NSScreen *s in [NSScreen screens]) {
+        if (NSMouseInRect(mouse, s.frame, NO)) { screen = s; break; }
+    }
     NSRect vis = screen.visibleFrame;
     frame.origin.x = vis.origin.x + (vis.size.width - kPanelWidth) / 2.0;
     frame.origin.y = vis.origin.y + (vis.size.height - height) / 2.0;

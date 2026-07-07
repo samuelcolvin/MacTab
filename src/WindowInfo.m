@@ -1,5 +1,44 @@
 #import "WindowInfo.h"
 
+// Maps window bounds to the display the window is (mostly) on. kCGWindowBounds
+// and CGDisplayBounds share the same global top-left-origin coordinate space,
+// so no conversion is needed. Returns kCGNullDirectDisplay if nothing matches.
+static CGDirectDisplayID DisplayForBounds(CGRect bounds) {
+    CGDirectDisplayID display = kCGNullDirectDisplay;
+    uint32_t count = 0;
+    CGPoint center = CGPointMake(CGRectGetMidX(bounds), CGRectGetMidY(bounds));
+    // The call succeeds even when the point lies on no display (count == 0,
+    // display left untouched), so success alone isn't enough — require count == 1.
+    if (CGGetDisplaysWithPoint(center, 1, &display, &count) == kCGErrorSuccess &&
+        count == 1) {
+        return display;
+    }
+    // Center off every display (window straddling an edge, partly dragged
+    // off-screen, …) — settle for any display the window intersects.
+    if (CGGetDisplaysWithRect(bounds, 1, &display, &count) == kCGErrorSuccess &&
+        count == 1) {
+        return display;
+    }
+    return kCGNullDirectDisplay;
+}
+
+// The display the mouse cursor is on. Needs no extra permissions:
+// CGEventCreate(NULL) reads the cursor location in the same global
+// top-left-origin coordinates as CGGetDisplaysWithPoint.
+static CGDirectDisplayID DisplayUnderCursor(void) {
+    CGEventRef e = CGEventCreate(NULL);
+    if (!e) return kCGNullDirectDisplay;
+    CGPoint cursor = CGEventGetLocation(e);
+    CFRelease(e);
+    CGDirectDisplayID display = kCGNullDirectDisplay;
+    uint32_t count = 0;
+    if (CGGetDisplaysWithPoint(cursor, 1, &display, &count) == kCGErrorSuccess &&
+        count == 1) {
+        return display;
+    }
+    return kCGNullDirectDisplay;
+}
+
 @implementation WindowInfo
 
 + (NSArray<WindowInfo *> *)currentSpaceWindowsExcludingPID:(pid_t)selfPID {
@@ -59,6 +98,23 @@
     }
 
     CFRelease(raw);
+
+    // Restrict to the current display, defined by the mouse cursor rather than
+    // the focused window: when the cursor's display has no windows, focus lives
+    // on another display and following it would surface that display's windows
+    // here. If the cursor's display can't be determined, leave the list
+    // unfiltered.
+    if (result.count > 0) {
+        CGDirectDisplayID active = DisplayUnderCursor();
+        if (active != kCGNullDirectDisplay) {
+            NSIndexSet *keep = [result
+                indexesOfObjectsPassingTest:^BOOL(WindowInfo *w, NSUInteger idx,
+                                                  BOOL *stop) {
+                    return DisplayForBounds(w.bounds) == active;
+                }];
+            result = [[result objectsAtIndexes:keep] mutableCopy];
+        }
+    }
     return result;
 }
 
