@@ -134,6 +134,9 @@ static CGEventRef EventTapCallback(CGEventTapProxy proxy, CGEventType type,
 
 - (void)showTimerFired:(NSTimer *)timer {
     if (!self.switching) return;
+    // Resolve window titles only now that the picker is actually appearing —
+    // a quick tap commits before this and never pays for the AX round-trips.
+    [WindowInfo fillTitlesViaAccessibility:self.windows];
     [self.panel showWindows:self.windows selectedIndex:self.selectedIndex];
     self.panelVisible = YES;
 }

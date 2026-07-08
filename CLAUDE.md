@@ -69,6 +69,10 @@ Startup flow: `main.m` (accessory `NSApplication`) → `AppDelegate` → `Switch
   mouse cursor (cursor read via `CGEventCreate`, no extra permissions); each
   window is mapped to its display via `CGGetDisplaysWithPoint` on its centre.
   The panel is likewise placed on the cursor's display in `SwitcherPanel.m`.
+  Window titles: `kCGWindowName` is empty without Screen Recording permission,
+  so `fillTitlesViaAccessibility:` resolves titles via AX (`kAXTitle`) instead —
+  called from `showTimerFired:` only when the picker actually appears, with a
+  short AX messaging timeout so a hung app can't stall the tap.
 
 - **`WindowRaiser.m`** — focuses a chosen window: activates the owning app, then
   `AXRaise`es the specific AX window. Matches the enumerated `CGWindowID` to an AX

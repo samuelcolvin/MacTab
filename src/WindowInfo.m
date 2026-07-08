@@ -1,4 +1,5 @@
 #import "WindowInfo.h"
+#import "PrivateAPI.h"
 
 // Maps window bounds to the display the window is (mostly) on. kCGWindowBounds
 // and CGDisplayBounds share the same global top-left-origin coordinate space,
@@ -116,6 +117,58 @@ static CGDirectDisplayID DisplayUnderCursor(void) {
         }
     }
     return result;
+}
+
++ (void)fillTitlesViaAccessibility:(NSArray<WindowInfo *> *)windows {
+    // One AX app query per owning app, not per window.
+    NSMutableDictionary<NSNumber *, NSMutableArray<WindowInfo *> *> *byPID =
+        [NSMutableDictionary dictionary];
+    for (WindowInfo *w in windows) {
+        if (w.windowTitle.length) continue;  // CG already provided one
+        NSMutableArray<WindowInfo *> *group = byPID[@(w.ownerPID)];
+        if (!group) {
+            group = [NSMutableArray array];
+            byPID[@(w.ownerPID)] = group;
+        }
+        [group addObject:w];
+    }
+
+    for (NSNumber *pidNum in byPID) {
+        AXUIElementRef app = AXUIElementCreateApplication(pidNum.intValue);
+        if (!app) continue;
+        // These calls are synchronous into the target app and we're on the main
+        // thread (which also services the event tap) — a beachballed app must
+        // fail fast, not stall keyboard input.
+        AXUIElementSetMessagingTimeout(app, 0.1);
+
+        CFArrayRef axWindows = NULL;
+        if (AXUIElementCopyAttributeValue(app, kAXWindowsAttribute,
+                                          (CFTypeRef *)&axWindows) == kAXErrorSuccess &&
+            axWindows) {
+            CFIndex n = CFArrayGetCount(axWindows);
+            for (CFIndex i = 0; i < n; i++) {
+                AXUIElementRef axWin =
+                    (AXUIElementRef)CFArrayGetValueAtIndex(axWindows, i);
+                CGWindowID wid = kCGNullWindowID;
+                if (_AXUIElementGetWindow(axWin, &wid) != kAXErrorSuccess) continue;
+                for (WindowInfo *w in byPID[pidNum]) {
+                    if (w.windowID != wid) continue;
+                    CFTypeRef title = NULL;
+                    if (AXUIElementCopyAttributeValue(axWin, kAXTitleAttribute,
+                                                      &title) == kAXErrorSuccess &&
+                        title) {
+                        if (CFGetTypeID(title) == CFStringGetTypeID()) {
+                            w.windowTitle = (__bridge NSString *)title;
+                        }
+                        CFRelease(title);
+                    }
+                    break;
+                }
+            }
+        }
+        if (axWindows) CFRelease(axWindows);
+        CFRelease(app);
+    }
 }
 
 - (NSString *)displayTitle {
