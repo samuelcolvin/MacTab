@@ -1,8 +1,10 @@
 #import "AppDelegate.h"
+#import "MiddleClickController.h"
 #import "SwitcherController.h"
 
 @interface AppDelegate ()
 @property(nonatomic, strong) SwitcherController *switcher;
+@property(nonatomic, strong) MiddleClickController *middleClick;
 @property(nonatomic, strong) NSStatusItem *statusItem;
 @property(nonatomic, assign) BOOL didPromptAccessibility;
 @property(nonatomic, assign) BOOL didStart;
@@ -13,6 +15,7 @@
 - (void)applicationDidFinishLaunching:(NSNotification *)note {
     [self setupStatusItem];
     self.switcher = [SwitcherController new];
+    self.middleClick = [MiddleClickController new];
     [self startWhenTrusted];
 }
 
@@ -26,6 +29,7 @@
     if (AXIsProcessTrusted()) {
         self.didStart = YES;
         [self.switcher start];
+        [self.middleClick start];
         return;
     }
 
@@ -54,6 +58,10 @@
         initWithTitle:@"Hold ⌘, tap Tab to switch" action:nil keyEquivalent:@""];
     hint.enabled = NO;
     [menu addItem:hint];
+    NSMenuItem *clickHint = [[NSMenuItem alloc]
+        initWithTitle:@"Three-finger click in Chrome = middle click" action:nil keyEquivalent:@""];
+    clickHint.enabled = NO;
+    [menu addItem:clickHint];
     [menu addItem:[NSMenuItem separatorItem]];
     NSMenuItem *github = [[NSMenuItem alloc]
         initWithTitle:@"View at github.com/samuelcolvin/MacTab" action:@selector(openGitHub:) keyEquivalent:@""];

@@ -8,14 +8,16 @@ MacTab is a minimal, free Alt-Tab window switcher for macOS, written in Objectiv
 (ARC). It replaces macOS's ⌘Tab: hold ⌘ and tap Tab to cycle windows **on the
 current Space only** (⌘⇧Tab reverses, Esc cancels). It is a background agent app
 (`LSUIElement`, no Dock icon) with a menu-bar item. Only Accessibility permission
-is required — no Screen Recording, no thumbnails.
+is required — no Screen Recording, no thumbnails. It also maps a three-finger
+trackpad click/tap in Chrome to a middle click (`MiddleClickController`).
 
 ## Build & run
 
 There is **no Xcode project** — the build is a `Makefile` driving `clang` directly.
 
 ```sh
-make          # build build/MacTab.app (ad-hoc signed)
+make cert     # once per machine: self-signed signing identity in the login keychain
+make          # build build/MacTab.app
 make logs     # build + run in foreground so NSLog prints to the terminal (Ctrl-C to quit)
 make run      # build + launch via `open`
 make install  # copy to /Applications (override PREFIX=~/Applications)
@@ -28,10 +30,9 @@ verification is manual (run it and exercise ⌘Tab).
 
 ### Toolchain gotcha
 
-The machine's Command Line Tools SDK is broken, so the `Makefile` hard-codes
-`-isysroot` to Xcode's SDK
-(`/Applications/Xcode.app/.../MacOSX.platform/.../MacOSX.sdk`). `xcrun`/`xcodebuild`
-do not work here; don't rely on them.
+The Command Line Tools SDK has been broken on some machines, so the `Makefile`
+uses Xcode's SDK (`/Applications/Xcode.app/.../MacOSX.sdk`) when it exists and
+falls back to `xcrun --show-sdk-path` otherwise.
 
 ## Architecture
 
@@ -39,7 +40,8 @@ Startup flow: `main.m` (accessory `NSApplication`) → `AppDelegate` → `Switch
 
 - **`AppDelegate.m`** — builds the menu-bar `NSStatusItem` and gates event-tap
   creation on Accessibility trust (`startWhenTrusted`). It polls `AXIsProcessTrusted()`
-  every second and only calls `SwitcherController -start` once trusted. **This
+  every second and only calls `SwitcherController -start` (and
+  `MiddleClickController -start`) once trusted. **This
   ordering is deliberate and load-bearing:** creating the active keyboard tap while
   *already* Accessibility-trusted means macOS authorizes it under Accessibility
   alone and does not also prompt for Input Monitoring. Creating the tap eagerly
@@ -78,6 +80,16 @@ Startup flow: `main.m` (accessory `NSApplication`) → `AppDelegate` → `Switch
   `AXRaise`es the specific AX window. Matches the enumerated `CGWindowID` to an AX
   element via the **one private API** in `PrivateAPI.h`, `_AXUIElementGetWindow`.
 
+- **`MiddleClickController.m`** — three-finger click/tap in Chrome → middle
+  click. Finger counts come from the private `MultitouchSupport.framework`
+  (`dlopen`ed; callback on a background thread, so shared state is atomics plus
+  an `os_unfair_lock`). Its own active mouse tap (left down/drag/up) rewrites a
+  click in place when exactly three fingers are down and Chrome is frontmost.
+  Taps generate no click event, so they're detected from touch data (duration +
+  centroid movement) and a middle click is posted via `CGEventPost`. A real
+  click during the touch suppresses the tap. Re-registers devices on wake and
+  on `AppleMultitouchDevice` arrival. `MACTAB_DEBUG=1` logs finger counts.
+
 - **`SwitcherPanel.m`** — the overlay: a non-activating, never-key `NSPanel`
   (`canBecomeKeyWindow` returns NO so it never steals focus from the app being
   switched away from) with a custom-drawn flipped content view.
@@ -88,9 +100,11 @@ Startup flow: `main.m` (accessory `NSApplication`) → `AppDelegate` → `Switch
   `AXUIElementRef`, `CGEventRef`, `CFMachPortRef`) are **not** ARC-managed — release
   them manually with `CFRelease`, matching the existing code.
 - Adding a source file needs no Makefile edit — it globs `src/*.m`.
-- **Signing:** ad-hoc (`codesign --sign -`) with stable identifier
-  `dev.pydantic.mactab`. The code hash changes every build, which can invalidate the
-  TCC (Accessibility) grant and re-prompt after a rebuild. To reset while testing:
+- **Signing:** with the self-signed "MacTab Local Signing" identity (`make cert`,
+  `make-cert.sh`) and identifier `dev.pydantic.mactab`, so the designated
+  requirement — and the TCC grant — is stable across rebuilds. If the identity is
+  missing it falls back to ad-hoc, whose code hash changes every build and
+  invalidates the grant. To reset while testing:
   `tccutil reset Accessibility dev.pydantic.mactab` (and `... ListenEvent ...` for
   Input Monitoring).
 - Tunables are `static const` at the top of their file (e.g. `kShowDelay` in

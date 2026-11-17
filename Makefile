@@ -3,8 +3,9 @@ BUNDLE   := $(APP_NAME).app
 BUILD    := build
 BIN      := $(BUILD)/$(BUNDLE)/Contents/MacOS/$(APP_NAME)
 
-# Command Line Tools' SDK is broken on this machine; use Xcode's SDK directly.
-SDK := $(shell ls -d /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk 2>/dev/null)
+# Prefer Xcode's SDK (the Command Line Tools SDK has been broken on some
+# machines); fall back to whatever xcrun reports when Xcode isn't installed.
+SDK := $(shell ls -d /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk 2>/dev/null || xcrun --show-sdk-path)
 
 SOURCES := $(wildcard src/*.m)
 
@@ -16,15 +17,21 @@ LAUNCH_AGENT := $(HOME)/Library/LaunchAgents/$(BUNDLE_ID).plist
 INSTALLED_BIN := $(PREFIX)/$(BUNDLE)/Contents/MacOS/$(APP_NAME)
 GUI_DOMAIN   := gui/$(shell id -u)
 
+# Self-signed identity in the login keychain (created by `make cert`). A
+# stable certificate keeps the Accessibility grant valid across rebuilds;
+# without it we fall back to ad-hoc signing, which loses the grant each build.
+SIGN_ID := MacTab Local Signing
+
 FRAMEWORKS := -framework Cocoa \
               -framework ApplicationServices \
               -framework Carbon \
-              -framework CoreGraphics
+              -framework CoreGraphics \
+              -framework IOKit
 
 CFLAGS := -fobjc-arc -fmodules -Wall -Wno-deprecated-declarations \
           -mmacosx-version-min=12.0 -isysroot $(SDK) -Isrc
 
-.PHONY: all clean run sign install uninstall logs stream-logs startup-install startup-uninstall
+.PHONY: all cert clean run sign install uninstall logs stream-logs startup-install startup-uninstall
 
 all: $(BUNDLE)
 
@@ -32,10 +39,17 @@ $(BUNDLE): $(SOURCES) Info.plist
 	@mkdir -p $(BUILD)/$(BUNDLE)/Contents/MacOS
 	clang $(CFLAGS) $(FRAMEWORKS) $(SOURCES) -o $(BIN)
 	cp Info.plist $(BUILD)/$(BUNDLE)/Contents/Info.plist
-	@# Ad-hoc code signature so macOS keeps a stable Accessibility identity
-	@# across rebuilds (otherwise you must re-grant permission every build).
-	codesign --force --deep --sign - $(BUILD)/$(BUNDLE)
+	@if security find-certificate -c "$(SIGN_ID)" >/dev/null 2>&1; then \
+		codesign --force --deep --sign "$(SIGN_ID)" --identifier $(BUNDLE_ID) $(BUILD)/$(BUNDLE); \
+	else \
+		echo "warning: no \"$(SIGN_ID)\" certificate, signing ad-hoc (run \`make cert\`)"; \
+		codesign --force --deep --sign - --identifier $(BUNDLE_ID) $(BUILD)/$(BUNDLE); \
+	fi
 	@echo "Built $(BUILD)/$(BUNDLE)"
+
+# Create the self-signed signing certificate (once per machine).
+cert:
+	./make-cert.sh "$(SIGN_ID)"
 
 run: all
 	open $(BUILD)/$(BUNDLE)
